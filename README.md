@@ -1,39 +1,35 @@
 # STM32 Secure Profile Controller
 
-Ένα **Event-Driven Firmware** για τον μικροελεγκτή STM32 (Nucleo-F411RE) που υλοποιεί ένα σύστημα ελέγχου προφίλ LED με έμφαση στην ασφάλεια και την ακαριαία απόκριση.
+An **Event-Driven Firmware** for the STM32 (Nucleo-F411RE) microcontroller that implements an LED profile control system with an emphasis on safety and high responsiveness.
 
-## Περιγραφή
-Το project υλοποιεί έναν ελεγκτή που δέχεται ακολουθίες ψηφίων (profiles) μέσω UART. Κάθε ψηφίο αντιστοιχεί σε μια συχνότητα αναβοσβήματος του User LED (LD2). Το σύστημα ενσωματώνει λειτουργία **Emergency Stop (E-Stop)** μέσω εξωτερικής διακοπής (EXTI), η οποία θέτει τη συσκευή σε ασφαλή κατάσταση (Safe State).
+## Description
+This project implements a controller that receives sequences of digits (profiles) via UART. Each digit corresponds to a specific blinking frequency for the User LED (LD2). The system integrates an **Emergency Stop (E-Stop)** function via external interrupt (EXTI), which forces the device into a locked state.
 
+## Technical Features
+* **Architecture:** Event-Driven utilizing Interrupt Service Routines (ISRs).
+* **Concurrency:** Complete decoupling of data acquisition (UART ISR) from processing (Main Thread) using a queue.
+* **Timing:** Utilization of the internal **SysTick Timer** (10ms tick) for managing multiple timeouts, flags and LED toggling.
+* **Power Management:** Implementation of the `__WFI()` (Wait For Interrupt) instruction to enter low-power sleep mode during idle periods.
+* **Security & Safety:** * Instantaneous Emergency Stop.
+    * Protection against Buffer Overflow.
+    * Timed Override Mode with password authentication for system recovery.
 
+## Code Structure
+* `main.c`: The central orchestrator and system State Machine.
+* `uart_rx_isr`: Manages character reception and real-time input filtering.
+* `timer_isr`: Responsible for LED toggling and system timeouts.
+* `p_sw_pressed_isr`: Critical interrupt for Emergency Stop management.
 
-## Τεχνικά Χαρακτηριστικά
-* **Αρχιτεκτονική:** Event-Driven με χρήση Interrupt Service Routines (ISRs).
-* **Concurrency:** Πλήρης αποσύζευξη (decoupling) της λήψης δεδομένων (UART ISR) από την επεξεργασία (Main Thread) μέσω κυκλικής ουράς (Queue).
-* **Χρονισμός:** Χρήση του εσωτερικού **SysTick Timer** (10ms tick) για τη διαχείριση πολλαπλών timeouts και του LED toggling.
-* **Εξοικονόμηση Ενέργειας:** Χρήση της εντολής `__WFI()` (Wait For Interrupt) για μετάβαση σε low-power sleep mode όταν ο επεξεργαστής είναι σε αδράνεια.
-* **Ασφάλεια:**  Ακαριαία διακοπή λειτουργίας (Emergency Stop).
-    * Προστασία από Buffer Overflow.
-    * Timed Override Mode με κωδικό πρόσβασης για επαναφορά συστήματος.
+## Installation & Usage
+1. Open the project in your preferred IDE (e.g., Keil uVision or STM32CubeIDE).
+2. Connect your Nucleo-F411RE board.
+3. Build and Flash the code to the microcontroller.
+4. Open a Serial Terminal (e.g., Tera Term) configured at **115200 baud**.
 
-
-
-## Δομή Κώδικα
-* `main.c`: Ο κεντρικός ενορχηστρωτής και το State Machine του συστήματος.
-* `uart_rx_isr`: Διαχειριστής λήψης χαρακτήρων και φιλτράρισμα εισόδου.
-* `timer_isr`: Υπεύθυνος για το LED PWM-like control και τα συστημικά timeouts.
-* `p_sw_pressed_isr`: Κρίσιμο interrupt για τη διαχείριση του Emergency Stop.
-
-## Εγκατάσταση & Χρήση
-1. Ανοίξτε το project στο περιβάλλον ανάπτυξής (π.χ. Keil uVision ή STM32CubeIDE).
-2. Συνδέστε την Nucleo-F411RE πλακέτα σας.
-3. Κάντε Build και Flash τον κώδικά.
-4. Ανοίξτε έναν Serial Terminal (π.χ. Tera Term) στα **115200 baud rate**
-
-## Οδηγίες Λειτουργίας
-1. **Εισαγωγή Profile**: Πληκτρολογήστε μία σειρά ψηφίων (π.χ. `1234`) και πατήστε `enter`. To LED θα αρχίσει να αναβοσβήνει με τις αντίστοιχες συχνότητες.
-2. **Emergency Stop**: Πατήστε το μπλε κουμπί (Β1) της πλακέτας. Το σύστημα κλειδώνει ακαραία και το LED ανάβει σταθερά.
-3. **Unlock**: Πατήστε ξανά το μπλε κουμπί. Έχετε 5 δευτερόλεπτα για να πληκτρολογήσετε την λέξη `unlock` και να επαναφέρετε το σύστημα.
+## Operating Instructions
+1. **Profile Input**: Type a sequence of digits (e.g., `1234`) and press `Enter`. The LED will begin blinking at the corresponding frequencies.
+2. **Emergency Stop**: Press the blue button (B1) on the board. The system locks instantly, and the LED remains solid.
+3. **Unlock**: Press the blue button again. You have 5 seconds to type the password `unlock` to restore the system to its normal state.
 
 ## Academic Context
-Αυτό το project αναπτύχθηκε στα πλαίσια του μαθήματος **"Μικροεπεξεργαστές και Περιφερειακά"**, στο Τμήμα Ηλεκτρολόγων Μηχανικών και Μηχανικών Υπολογιστών, τον Απρίλιο του 2026.
+This project was developed as part of the **"Microprocessors and Peripherals"** course at the Department of Electrical and Computer Engineering, April 2026.
