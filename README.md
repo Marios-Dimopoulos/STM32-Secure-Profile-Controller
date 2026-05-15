@@ -25,18 +25,15 @@
 * `p_sw_pressed_isr`: Κρίσιμο interrupt για τη διαχείριση του Emergency Stop.
 
 ## Εγκατάσταση & Χρήση
-1. Κάντε clone το repository:
-   ```bash
-   git clone [https://github.com/YOUR_USERNAME/STM32-Secure-Profile-Controller.git](https://github.com/YOUR_USERNAME/STM32-Secure-Profile-Controller.git)
-   ```
-2. Ανοίξτε το project στο περιβάλλον ανάπτυξής (π.χ. Keil uVision ή STM32CubeIDE).
-3. Συνδέστε την Nucleo-F411RE πλακέτα σας.
-4. Κάντε Build και Flash τον κώδικά.
-5. Ανοίξτε έναν Serial Terminal (π.χ. Tera Term) στα **115200 baud rate**
+1. Ανοίξτε το project στο περιβάλλον ανάπτυξής (π.χ. Keil uVision ή STM32CubeIDE).
+2. Συνδέστε την Nucleo-F411RE πλακέτα σας.
+3. Κάντε Build και Flash τον κώδικά.
+4. Ανοίξτε έναν Serial Terminal (π.χ. Tera Term) στα **115200 baud rate**
 
 ## Οδηγίες Λειτουργίας
 1. **Εισαγωγή Profile**: Πληκτρολογήστε μία σειρά ψηφίων (π.χ. `1234`) και πατήστε `enter`. To LED θα αρχίσει να αναβοσβήνει με τις αντίστοιχες συχνότητες.
 2. **Emergency Stop**: Πατήστε το μπλε κουμπί (Β1) της πλακέτας. Το σύστημα κλειδώνει ακαραία και το LED ανάβει σταθερά.
 3. **Unlock**: Πατήστε ξανά το μπλε κουμπί. Έχετε 5 δευτερόλεπτα για να πληκτρολογήσετε την λέξη `unlock` και να επαναφέρετε το σύστημα.
 
-
+# Academic Context
+Αυτό το project αναπτύχθηκε στα πλαίσια του μαθήματος **"Μικροεπεξεργαστές και Περιφερειακά"**, στο Τμήμα Ηλεκτρολόγων Μηχανικών και Μηχανικών Υπολογιστών, τον Απρίλιο του 2026.
