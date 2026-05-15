@@ -1,0 +1,42 @@
+# STM32 Secure Profile Controller
+
+Ένα **Event-Driven Firmware** για τον μικροελεγκτή STM32 (Nucleo-F411RE) που υλοποιεί ένα σύστημα ελέγχου προφίλ LED με έμφαση στην ασφάλεια και την ακαριαία απόκριση.
+
+## Περιγραφή
+Το project υλοποιεί έναν ελεγκτή που δέχεται ακολουθίες ψηφίων (profiles) μέσω UART. Κάθε ψηφίο αντιστοιχεί σε μια συχνότητα αναβοσβήματος του User LED (LD2). Το σύστημα ενσωματώνει λειτουργία **Emergency Stop (E-Stop)** μέσω εξωτερικής διακοπής (EXTI), η οποία θέτει τη συσκευή σε ασφαλή κατάσταση (Safe State).
+
+
+
+## Τεχνικά Χαρακτηριστικά
+* **Αρχιτεκτονική:** Event-Driven με χρήση Interrupt Service Routines (ISRs).
+* **Concurrency:** Πλήρης αποσύζευξη (decoupling) της λήψης δεδομένων (UART ISR) από την επεξεργασία (Main Thread) μέσω κυκλικής ουράς (Queue).
+* **Χρονισμός:** Χρήση του εσωτερικού **SysTick Timer** (10ms tick) για τη διαχείριση πολλαπλών timeouts και του LED toggling.
+* **Εξοικονόμηση Ενέργειας:** Χρήση της εντολής `__WFI()` (Wait For Interrupt) για μετάβαση σε low-power sleep mode όταν ο επεξεργαστής είναι σε αδράνεια.
+* **Ασφάλεια:** * Ακαριαία διακοπή λειτουργίας (Emergency Stop).
+    * Προστασία από Buffer Overflow.
+    * Timed Override Mode με κωδικό πρόσβασης για επαναφορά συστήματος.
+
+
+
+## Δομή Κώδικα
+* `main.c`: Ο κεντρικός ενορχηστρωτής και το State Machine του συστήματος.
+* `uart_rx_isr`: Διαχειριστής λήψης χαρακτήρων και φιλτράρισμα εισόδου.
+* `timer_isr`: Υπεύθυνος για το LED PWM-like control και τα συστημικά timeouts.
+* `p_sw_pressed_isr`: Κρίσιμο interrupt για τη διαχείριση του Emergency Stop.
+
+## Εγκατάσταση & Χρήση
+1. Κάντε clone το repository:
+   ```bash
+   git clone [https://github.com/YOUR_USERNAME/STM32-Secure-Profile-Controller.git](https://github.com/YOUR_USERNAME/STM32-Secure-Profile-Controller.git)
+   ```
+2. Ανοίξτε το project στο περιβάλλον ανάπτυξής (π.χ. Keil uVision ή STM32CubeIDE).
+3. Συνδέστε την Nucleo-F411RE πλακέτα σας.
+4. Κάντε Build και Flash τον κώδικά.
+5. Ανοίξτε έναν Serial Terminal (π.χ. Tera Term) στα **115200 baud rate**
+
+## Οδηγίες Λειτουργίας
+1. **Εισαγωγή Profile**: Πληκτρολογήστε μία σειρά ψηφίων (π.χ. `1234`) και πατήστε `enter`. To LED θα αρχίσει να αναβοσβήνει με τις αντίστοιχες συχνότητες.
+2. **Emergency Stop**: Πατήστε το μπλε κουμπί (Β1) της πλακέτας. Το σύστημα κλειδώνει ακαραία και το LED ανάβει σταθερά.
+3. **Unlock**: Πατήστε ξανά το μπλε κουμπί. Έχετε 5 δευτερόλεπτα για να πληκτρολογήσετε την λέξη `unlock` και να επαναφέρετε το σύστημα.
+
+
