@@ -10,19 +10,48 @@
 
 #define BUFF_SIZE 128
 
-Queue rx_queue;	//uart_rx_isr stores the characters that come from UART peripheral in this queue. Later in the main function, these characters are fetched for acts upon them.
+//uart_rx_isr stores the characters that come from UART peripheral in this queue. 
+//Later in the main function, these characters are fetched and stored in the main buffer
+Queue rx_queue;		
 
-volatile char timer_buff[BUFF_SIZE];	//characters in the main buff are copied in the timer_buff, so the user can enter another profile, while the previous one is executed, and stop it early.
-volatile bool led_state = 0;	//used for toggling the led between 1 and 0
+//active profile string, copied from buff before execution starts,
+//so the user can type a new profile while the current one runs
+volatile char timer_buff[BUFF_SIZE];		
+
+//used for toggling the led between 1 and 0
+volatile bool led_state = 0;		
+
+//set to 1 while the user is actively entering a profile 
 volatile bool is_typing = 0;	
+
+//set to 1 while a profile is executing inside timer_isr
 volatile bool profile_running = 0;
+	
+//set to 1 by timer_isr when the last digit of a profile finishes
 volatile bool profile_finished = 0;
+	
+// state machine for the emergency-stop button:
+//   0 = normal
+//   1 = E-stop active 
+//   2 = override requested 
 volatile uint32_t emergency_button_pressed_counter = 0;	
-volatile uint32_t unlock_timeout_counter = 0;	//counts the 5 seconds that the user has in order to enter the password "unlock"
-volatile uint32_t current_digit_index = 0;	//index that points to the current character of the profile, that is about to execute
-volatile uint32_t four_second_timeout_counter = 0;	//counts the 4 seconds that the user has in order to submit the new profile he is creating
-volatile uint32_t led_toggle_phase_counter = 0;	//on each timer interrupt, this counter is increased, and is used for comparison with the target_ticks that there are according to the current index, so the program know when to toggle the led
-volatile uint32_t digit_active_window_counter = 0;	//counts the 2 seconds that each character/digit has to execute
+
+//counts 10 ms ticks during state 2; system returns to state 1 after 500 ticks (5s)
+volatile uint32_t unlock_timeout_counter = 0;		
+
+//index that points to the current character of the profile, that is executing
+volatile uint32_t current_digit_index = 0;		
+
+//counts 10 ms ticks since the user started typing; cleared on each keystroke.
+//Profile is discarded if it reaches 400 ticks (4s) with no input
+volatile uint32_t four_second_timeout_counter = 0;		
+
+//on each timer interrupt, this counter is increased, and is used for comparison 
+//with the target_ticks that there are according to the current digit, so the program knows when to toggle the led
+volatile uint32_t led_toggle_phase_counter = 0;		
+
+//counts ticks spent on the current digit; digit advances at 200 ticks (2s)
+volatile uint32_t digit_active_window_counter = 0;		
 
 
 //Whenever a character is received by the UART peripheral,
@@ -43,7 +72,7 @@ void uart_rx_isr(uint8_t rx) {
 
 //The timer_isr should be executed periodically,
 //according to the period specified by the timer_init instruction.
-//For the needs of the exercise (we needed to use
+//For the needs of the exercise (we have to use
 //only one timer) we use one timer with a stable timestamp, which
 //does multiple tasks.
 void timer_isr() {
@@ -68,11 +97,16 @@ void timer_isr() {
 		digit_active_window_counter++;	
 		int freq = timer_buff[current_digit_index] - '0';
 		
-		//This if-else condition checks what is the frequency that the led needs to be toggled 
+		//checks the frequency that the led needs to be toggled 
 		if (freq > 0) {
 			led_toggle_phase_counter++;
-			uint32_t target_ticks = (50 / freq);	//timer interrupts are occured every 10ms, so we have 100 ticks in every second. In order LED toggles with f frequency, the time period is T = 1/f. So half-period is 1/(2f). This means: Ticks = 100/(2f) => Ticks = 50/f.
 			
+			//timer interrupts are occurred every 10ms, so we have 100 ticks in every second. In order LED toggles with f frequency, 
+			//the time period is T = 1/f. So half-period is 1/(2f). This means: Ticks = 100/(2f) => Ticks = 50/f
+			uint32_t target_ticks = (50 / freq);		
+			
+			//comparison of the led_toggle_phase_counter with the target_ticks, so the led 
+			//is toggled on a standard frequency depending on the current character of the profile
 			if (led_toggle_phase_counter >= target_ticks) {
 				gpio_toggle(PA_5);
 				led_toggle_phase_counter = 0;
@@ -81,7 +115,7 @@ void timer_isr() {
 			gpio_set(PA_5, 0);
 		 }
 		
-		//When the window for a particular digit (frequency) is over, we do curret_digit_index++ (points to the next digit).
+		//each digit runs for 2s (200 ticks at 10ms/tick), then current_digit_index is increasded, pointing to the next character
 		if (digit_active_window_counter >= 200) {
 			digit_active_window_counter = 0;
 			led_toggle_phase_counter = 0;
@@ -91,17 +125,18 @@ void timer_isr() {
 	
 	if (emergency_button_pressed_counter == 2) {
 		unlock_timeout_counter++;
-		
 	}
 }
 
-//Whenever a the B1 button (P_SW) is pressed, the p_sw_pressed_isr
-//is executed.
+//Whenever a the B1 button (P_SW) is pressed, the p_sw_pressed_isr routine is called.
 void p_sw_pressed_isr() {
 	if (emergency_button_pressed_counter == 0) {
 		timer_disable();
-		rx_queue.head = 0;	//for flushing the queue. Avoids queue_init() to prevent heap allocations (malloc), which caused crashes after multiple E-stops
-		rx_queue.tail = 0;
+		
+		//for flushing the queue. Avoids queue_init() to prevent heap allocations (malloc), which caused crashes after multiple E-stops
+		rx_queue.head = 0;		
+		rx_queue.tail = 0;		
+		
 		gpio_set(PA_5, 1);
 		is_typing = 0;
 		profile_running = 0;
@@ -119,28 +154,33 @@ void p_sw_pressed_isr() {
 
 
 int main() {
-	uint8_t rx_char = 0;	//the character that is fetched from rx_queue is store in the rx_char
-	char buff[BUFF_SIZE];	//the buffer that the rx_char is eventually stored
+	
+	//the character that is fetched from rx_queue is stored in the rx_char
+	uint8_t rx_char = 0;		
+	
+	//the buffer that the rx_char is eventually stored
+	char buff[BUFF_SIZE];		
+	
 	uint32_t buff_index = 0;	
 	
 	gpio_set_mode(P_SW, Input);
 	gpio_set_trigger(P_SW, Falling);
-	gpio_set_callback(P_SW, p_sw_pressed_isr);	//whenever the B1 button is pressed, the p_sw_pressed_isr preempts the main thread
+	gpio_set_callback(P_SW, p_sw_pressed_isr);		
 	
 	gpio_set_mode(PA_5, Output);
 	gpio_set(PA_5, 0);
 	
 	timer_init(10000);
 	timer_enable();
-	timer_set_callback(timer_isr);	//whenever the timer ticks, the timer_isr is executed (in my occasion every 10ms)
+	timer_set_callback(timer_isr);		
 	
 	queue_init(&rx_queue, 128);
 	
 	uart_init(115200);
-	uart_set_rx_callback(uart_rx_isr);	//whenever a character is received by the UART peripheral, the uart_rx_isr is executed.
+	uart_set_rx_callback(uart_rx_isr);		
 	uart_enable();
 	
-	//setting the isr priorities
+	//priority order: 0 is the highest, 10 is the lowest and 5 is the middle one
 	NVIC_SetPriority(EXTI15_10_IRQn, 0);
 	NVIC_SetPriority(SysTick_IRQn, 5);
 	NVIC_SetPriority(USART2_IRQn, 10);
@@ -155,20 +195,26 @@ int main() {
 		}
 		
 		do {
-			while (!queue_dequeue(&rx_queue, &rx_char)) {	//while there is no character stored in the queue.
-				__WFI();	//CPU enters "sleep mode" until an interrupt is occured.
+			
+			//while there is no character stored in the queue.
+			while (!queue_dequeue(&rx_queue, &rx_char)) {	
+				
+				//CPU enters "sleep mode" until an interrupt is occurred.
+				__WFI();		
 				
 				if (emergency_button_pressed_counter == 1) {
 					uart_print("\r\n[ERROR] SYSTEM LOCKED\r\n");
 				}
 				
-				if (emergency_button_pressed_counter == 2 && unlock_timeout_counter == 1) {	//so the text in the uart_print, is printed only one time, when the first timer interrupt occurs.
+				//print override prompt once upon entering state 2
+				if (emergency_button_pressed_counter == 2 && unlock_timeout_counter == 1) {	
 					uart_print("\r\nOverride requested. Awaiting password...\r\n");																							
 				}
 				
-				if (unlock_timeout_counter >= 500) {
+				//switch back to E-stop state, if the user didn't enter the right password in the 5 second window
+				if (unlock_timeout_counter >= 500) {	
 					unlock_timeout_counter = 0;
-					emergency_button_pressed_counter = 1;	//switch back to E-stop state, if the user didnt enter the right password in the 5 second window
+					emergency_button_pressed_counter = 1;	
 					buff_index = 0;
 					timer_disable();
 					uart_print("\r\n[TIMEOUT]\r\n\r\n[ERROR] SYSTEM LOCKED\r\n");		
@@ -179,6 +225,7 @@ int main() {
 					uart_print("\r\nYour profile has finished\r\n\r\nEnter your profile (integers: 0-9)->");
 				}
 				
+				//discard the partially typed profile if the user is idle for 4s
 				if (is_typing && four_second_timeout_counter >= 400) {
 					buff_index = 0;
 					four_second_timeout_counter = 0;
@@ -187,11 +234,15 @@ int main() {
 					uart_print("\r\nEnter your profile (integers: 0-9)->");
 				}
 			}
-			if (emergency_button_pressed_counter == 1) {	//this if condition is rarely executed, but we add it, just in case, the p_sw interrupt is occured just before that if condition. 
+			
+			//this if condition is rarely executed, but we add it, just in case, the p_sw interrupt is occured just before that if condition
+			if (emergency_button_pressed_counter == 1) {	
 				rx_char = 0;
 				continue;
 			}
-			if (((rx_char >=0x30 && rx_char <=0x39) || rx_char == 0x2D) && emergency_button_pressed_counter != 2) {	//Enter integers (0-9) and hyphen-minus (-), while not being in override requested state
+			
+			//reset inactivity timeout upon valid profile character input
+			if (((rx_char >=0x30 && rx_char <=0x39) || rx_char == 0x2D) && emergency_button_pressed_counter != 2) {	
 				four_second_timeout_counter = 0;
 				if (!is_typing) {
 					is_typing = 1;
@@ -205,47 +256,60 @@ int main() {
 					uart_tx(rx_char);
 					uart_tx(' ');
 					uart_tx(rx_char);
-					if (buff_index == 0 && emergency_button_pressed_counter != 2) {	//if, because of the backspace, the buffer has no characters in it (the buff_index equals to 0), it is supposed that the user is not typing anything
+					
+					//if the buffer is now empty, the user is no longer actively typing
+					if (buff_index == 0 && emergency_button_pressed_counter != 2) {	
 						is_typing = 0;
 					}
 				}
-			}else if (buff_index == 0 && rx_char == 0x2D && emergency_button_pressed_counter !=2) {	//hyphen-minus cannot be the first character of a profile
+			//hyphen-minus cannot be the first character of a profile
+			}else if (buff_index == 0 && rx_char == 0x2D && emergency_button_pressed_counter !=2) {	
 				four_second_timeout_counter = 0;
 				is_typing = 0;
 				uart_print("\r\nThe hyphen-minus cannot be the first character you enter!\r\n\r\nEnter your profile (integers: 0-9)->");
-			}else if (buff[buff_index-1] == 0x2D && ((rx_char >= 0x30 && rx_char <=0x39) || rx_char == 0x2D) && emergency_button_pressed_counter !=2) {	//hyphen-minus must be the last character of the profile
+			//hyphen-minus must be the last character of the profile
+			}else if (buff[buff_index-1] == 0x2D && ((rx_char >= 0x30 && rx_char <=0x39) || rx_char == 0x2D) && emergency_button_pressed_counter !=2) {	
 				four_second_timeout_counter = 0;
 				is_typing = 0;
 				buff_index = 0;
 				uart_print("\r\nThe hyphen-minus must be the last character of the profile!\r\n\r\nEnter your profile (integers: 0-9)->");
-			}else {	//character is added to the main buffer
-				buff[buff_index++] = (char)rx_char;
-				uart_tx(rx_char);
+			}else {	
+				buff[buff_index++] = (char)rx_char;		
+				uart_tx(rx_char);		
 			}
-		}	while(rx_char != '\r' && buff_index < BUFF_SIZE);	//the do-while loop is executed until the user pressed enter, or a buffer overflow occures
+		}	while(rx_char != '\r' && buff_index < BUFF_SIZE);		
 		
 			if (rx_char == 0x0D) {
-				if (buff_index == 1 && emergency_button_pressed_counter == 0) {	//special text is printed, if used has not entered any characters, and is in normal state
+				//special text is printed, if used has not entered any characters, and is in normal state
+				if (buff_index == 1 && emergency_button_pressed_counter == 0) {	
 					buff[buff_index-1] = '\0';
 					is_typing = 0;
 					four_second_timeout_counter = 0;
 					uart_print("\r\nYou have not entered any characters!\r\n");
-				}else if(buff_index != 1 && emergency_button_pressed_counter == 0) {	//acts done if there are characters in the buffer and the user is in noraml state
+				//process valid profile submission
+				}else if(buff_index != 1 && emergency_button_pressed_counter == 0) {	
 					buff[buff_index-1] = '\0';
 					is_typing = 0;
 					four_second_timeout_counter = 0;
 					
-					profile_running = 0;	//by setting this bool variable to 0, we basicly tell the timer_isr to stop executing the previous profile, because a new one is being processed for execution
+					//stop current profile before loading new one
+					profile_running = 0;
+					
 					gpio_set(PA_5, 0);
-					strncpy((char*)timer_buff, buff, BUFF_SIZE);	//copy the new profile (that exists in the main buff), to the timer_buf, so timer_isr can act upon the new characters of the profile
+					strncpy((char*)timer_buff, buff, BUFF_SIZE);	
 					current_digit_index = 0;
 					digit_active_window_counter = 0;
 					led_toggle_phase_counter = 0;
-					profile_running = 1;	//by setting this bool variable to 1, (having copied the new profile to the timer_buf) the timer_isr, starts acting upon the new profile
+					
+					//writing timer_buff is complete, low timer_isr to start executing it
+					profile_running = 1;		
+					
 					uart_print("\r\nNew profile started!\r\n");
-				}else if (emergency_button_pressed_counter == 2) {	//if program is in override requested state...
+					
+				//if program is in override requested state...
+				}else if (emergency_button_pressed_counter == 2) {		
 					buff[buff_index-1] = '\0';
-					if (strcmp(buff, "unlock") == 0) {	//compair the string that user entered, with the "unlock" password
+					if (strcmp(buff, "unlock") == 0) {	
 						emergency_button_pressed_counter = 0;
 						unlock_timeout_counter = 0;
 						gpio_set(PA_5, 0);
@@ -256,8 +320,9 @@ int main() {
 					}
 				}
 			}
-		
-		if (buff_index >= BUFF_SIZE) {	//uart_print in case of main buffer overflow.
+			
+		//print special message in the case of main buffer overflow
+		if (buff_index >= BUFF_SIZE) {	
 			uart_print("\r\nStop trying to overflow my buffer! I resent that!\r\n");
 		}
 	}
